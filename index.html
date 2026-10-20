@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linkku</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14212b;--mute:#5d6b77;--line:#d5dce2;--acc:#0e7c86;--acc-ink:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#10171d;--card:#1a242d;--ink:#e8eef2;--mute:#93a3af;--line:#2b3946;--acc:#35b5c0;--acc-ink:#06242a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 Figtree,system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
+h1{font-weight:800;font-size:2rem;margin:8px 0 16px;letter-spacing:-.02em}
+input,button{font:inherit;color:inherit}
+input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);padding:9px 14px;border-radius:8px}
+button.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:600}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:10px;margin-bottom:20px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.chip{padding:5px 12px;border-radius:99px;font-size:.9rem}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card img{width:100%;height:160px;object-fit:cover;background:var(--line)}
+.ph{height:160px;display:grid;place-items:center;font-size:2.4rem;font-weight:800;color:#fff}
+.body{padding:12px 14px;display:grid;gap:6px;flex:1}
+.pf{font-size:.85rem;color:var(--mute)}
+.card h3{margin:0;font-size:1rem;line-height:1.3;overflow-wrap:anywhere}
+.card p{margin:0;font-size:.9rem;color:var(--mute);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.lb{font-weight:600;color:var(--acc);font-size:.9rem}
+.act{display:flex;gap:8px;padding:0 14px 14px}
+.act a,.act button{font-size:.85rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);color:var(--ink);text-decoration:none;background:var(--card)}
+.empty{color:var(--mute);padding:30px 0;text-align:center}
+.top{display:flex;justify-content:space-between;align-items:center}
+.msg{color:#c0392b;font-size:.9rem;min-height:1.2em}
+[hidden]{display:none!important}
+@media(max-width:520px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<section id="auth" hidden>
+  <h1>Linkku</h1>
+  <form class="box" id="authForm" style="max-width:380px">
+    <input id="em" type="email" placeholder="Email" autocomplete="email" required>
+    <input id="pw" type="password" placeholder="Kata sandi (min. 6 karakter)" autocomplete="current-password" required minlength="6">
+    <div class="msg" id="authMsg"></div>
+    <button class="p" type="submit">Masuk</button>
+    <button type="button" id="signup">Daftar akun baru</button>
+  </form>
+</section>
+
+<section id="app" hidden>
+  <div class="top"><h1>Linkku</h1><button id="out">Keluar</button></div>
+  <form class="box" id="addForm">
+    <input id="url" type="url" placeholder="Tempel link Instagram, Facebook, Threads, X, dll" required>
+    <div class="row">
+      <input id="label" list="labels" placeholder="Label, mis. Resep, Inspirasi, Kerja">
+      <input id="note" placeholder="Catatan (opsional)">
+    </div>
+    <datalist id="labels"></datalist>
+    <div class="msg" id="addMsg"></div>
+    <button class="p" type="submit" id="saveBtn">Simpan link</button>
+  </form>
+  <input id="q" type="search" placeholder="Cari judul, catatan, atau label" style="margin-bottom:12px">
+  <div class="bar" id="chips"></div>
+  <div class="grid" id="list"></div>
+</section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// ISI DUA BARIS INI (lihat panduan README)
+const SB_URL = 'https://nvdycbtviwnozmpppxuv.supabase.co/rest/v1/';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52ZHljYnR2aXdub3ptcHBweHV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1MDI3NjgsImV4cCI6MjEwODA3ODc2OH0.juoO6mA6377aXMupqtacjl66y4g73S7FF0BtrovXIpU';
+
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PF = [['instagram','Instagram','#c13584'],['facebook','Facebook','#1877f2'],['threads','Threads','#101010'],['twitter','X','#14171a'],['x.com','X','#14171a'],['tiktok','TikTok','#010101'],['youtube','YouTube','#e62117'],['youtu.be','YouTube','#e62117'],['linkedin','LinkedIn','#0a66c2']];
+const platform = (u) => { const h = new URL(u).hostname; const m = PF.find((p) => h.includes(p[0])); return m ? [m[1], m[2]] : [h.replace('www.', ''), '#5d6b77']; };
+
+let links = [], activeLabel = '';
+
+async function boot() {
+  const { data } = await sb.auth.getSession();
+  show(!!data.session);
+  sb.auth.onAuthStateChange((_e, s) => show(!!s));
+}
+function show(loggedIn) {
+  $('auth').hidden = loggedIn; $('app').hidden = !loggedIn;
+  if (loggedIn) load();
+}
+$('authForm').onsubmit = async (e) => {
+  e.preventDefault(); $('authMsg').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({ email: $('em').value, password: $('pw').value });
+  if (error) $('authMsg').textContent = 'Gagal masuk: email atau kata sandi salah.';
+};
+$('signup').onclick = async () => {
+  $('authMsg').textContent = '';
+  const { data, error } = await sb.auth.signUp({ email: $('em').value, password: $('pw').value });
+  if (error) $('authMsg').textContent = 'Gagal daftar: ' + error.message;
+  else if (!data.session) $('authMsg').textContent = 'Cek email Anda untuk konfirmasi, lalu masuk.';
+};
+$('out').onclick = () => sb.auth.signOut();
+
+async function load() {
+  const { data, error } = await sb.from('links').select('*').order('created_at', { ascending: false });
+  if (error) { $('addMsg').textContent = 'Gagal memuat data: ' + error.message; return; }
+  links = data; render();
+}
+$('addForm').onsubmit = async (e) => {
+  e.preventDefault(); $('addMsg').textContent = '';
+  const url = $('url').value.trim(), btn = $('saveBtn');
+  btn.disabled = true; btn.textContent = 'Menyimpan…';
+  let pv = { title: '', description: '', image: '' };
+  try { pv = await (await fetch('/api/preview?url=' + encodeURIComponent(url))).json(); } catch (_) {}
+  const { error } = await sb.from('links').insert({
+    url, platform: platform(url)[0], title: pv.title || '', description: pv.description || '',
+    image: pv.image || '', label: $('label').value.trim(), note: $('note').value.trim()
+  });
+  btn.disabled = false; btn.textContent = 'Simpan link';
+  if (error) { $('addMsg').textContent = 'Gagal menyimpan: ' + error.message; return; }
+  $('addForm').reset(); load();
+};
+$('q').oninput = render;
+
+function render() {
+  const labels = [...new Set(links.map((l) => l.label).filter(Boolean))].sort();
+  if (activeLabel && !labels.includes(activeLabel)) activeLabel = '';
+  $('labels').innerHTML = labels.map((l) => `<option value="${esc(l)}">`).join('');
+  $('chips').innerHTML = ['', ...labels].map((l) =>
+    `<button class="chip ${l === activeLabel ? 'on' : ''}" data-l="${esc(l)}">${l ? esc(l) : 'Semua'}</button>`).join('');
+  $('chips').querySelectorAll('button').forEach((b) => b.onclick = () => { activeLabel = b.dataset.l; render(); });
+  const q = $('q').value.toLowerCase();
+  const rows = links.filter((l) => (!activeLabel || l.label === activeLabel) &&
+    [l.title, l.description, l.note, l.label, l.url].join(' ').toLowerCase().includes(q));
+  $('list').innerHTML = rows.length ? rows.map(card).join('') :
+    `<div class="empty" style="grid-column:1/-1">${links.length ? 'Tidak ada link yang cocok.' : 'Belum ada link. Tempel link pertama Anda di atas.'}</div>`;
+  $('list').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => del(b.dataset.del));
+  $('list').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => edit(b.dataset.edit));
+}
+function card(l) {
+  const [name, color] = platform(l.url);
+  const img = l.image ? `<img src="${esc(l.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=ph style=background:${color}>${esc(name[0])}</div>'">`
+    : `<div class="ph" style="background:${color}">${esc(name[0])}</div>`;
+  return `<article class="card">${img}<div class="body">
+    <div class="pf">${esc(name)}</div>
+    ${l.label ? `<div class="lb">${esc(l.label)}</div>` : ''}
+    <h3>${esc(l.title || l.url)}</h3>
+    ${l.description ? `<p>${esc(l.description)}</p>` : ''}
+    ${l.note ? `<p style="color:var(--ink)">Catatan: ${esc(l.note)}</p>` : ''}
+  </div><div class="act"><a href="${esc(l.url)}" target="_blank" rel="noopener">Buka</a>
+  <button data-edit="${l.id}">Ubah</button><button data-del="${l.id}">Hapus</button></div></article>`;
+}
+async function del(id) {
+  if (!confirm('Hapus link ini?')) return;
+  await sb.from('links').delete().eq('id', id); load();
+}
+async function edit(id) {
+  const l = links.find((x) => x.id === id);
+  const label = prompt('Label:', l.label || ''); if (label === null) return;
+  const note = prompt('Catatan:', l.note || ''); if (note === null) return;
+  const title = prompt('Judul (kosongkan jika tidak perlu):', l.title || ''); if (title === null) return;
+  await sb.from('links').update({ label: label.trim(), note: note.trim(), title: title.trim() }).eq('id', id); load();
+}
+boot();
+</script>
+</body>
+</html>
