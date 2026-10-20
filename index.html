@@ -35,6 +35,8 @@ button.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font
 .act a,.act button{font-size:.85rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);color:var(--ink);text-decoration:none;background:var(--card)}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
 .top{display:flex;justify-content:space-between;align-items:center}
+.grp{margin:0 0 22px}.grp summary{cursor:pointer;font-weight:800;font-size:1.15rem;padding:6px 0;margin:0 0 12px;border-bottom:2px solid var(--line)}.grp summary span{font-weight:400;color:var(--mute);font-size:.95rem;margin-left:6px}
+button.link{border:none;background:none;color:var(--acc);padding:4px;text-decoration:underline}
 .msg{color:#c0392b;font-size:.9rem;min-height:1.2em}
 [hidden]{display:none!important}
 @media(max-width:520px){.row{grid-template-columns:1fr}}
@@ -50,6 +52,17 @@ button.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font
     <div class="msg" id="authMsg"></div>
     <button class="p" type="submit">Masuk</button>
     <button type="button" id="signup">Daftar akun baru</button>
+    <button type="button" id="forgot" class="link">Lupa kata sandi?</button>
+  </form>
+</section>
+
+<section id="reset" hidden>
+  <h1>Linkku</h1>
+  <form class="box" id="resetForm" style="max-width:380px">
+    <p style="margin:0">Buat kata sandi baru Anda.</p>
+    <input id="np" type="password" placeholder="Kata sandi baru (min. 6 karakter)" autocomplete="new-password" required minlength="6">
+    <div class="msg" id="resetMsg"></div>
+    <button class="p" type="submit">Simpan kata sandi baru</button>
   </form>
 </section>
 
@@ -67,7 +80,7 @@ button.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font
   </form>
   <input id="q" type="search" placeholder="Cari judul, catatan, atau label" style="margin-bottom:12px">
   <div class="bar" id="chips"></div>
-  <div class="grid" id="list"></div>
+  <div id="list"></div>
 </section>
 </main>
 
@@ -85,25 +98,43 @@ const platform = (u) => { const h = new URL(u).hostname; const m = PF.find((p) =
 
 let links = [], activeLabel = '';
 
+let recovering = location.hash.includes('type=recovery');
 async function boot() {
+  sb.auth.onAuthStateChange((e, sess) => { if (e === 'PASSWORD_RECOVERY') recovering = true; show(!!sess); });
   const { data } = await sb.auth.getSession();
   show(!!data.session);
-  sb.auth.onAuthStateChange((_e, s) => show(!!s));
 }
 function show(loggedIn) {
-  $('auth').hidden = loggedIn; $('app').hidden = !loggedIn;
-  if (loggedIn) load();
+  $('reset').hidden = !recovering;
+  $('auth').hidden = loggedIn || recovering;
+  $('app').hidden = !loggedIn || recovering;
+  if (loggedIn && !recovering) load();
 }
 $('authForm').onsubmit = async (e) => {
-  e.preventDefault(); $('authMsg').textContent = '';
+  e.preventDefault(); $('authMsg').textContent = ''; $('authMsg').style.color = '';
   const { error } = await sb.auth.signInWithPassword({ email: $('em').value, password: $('pw').value });
   if (error) $('authMsg').textContent = 'Gagal masuk: email atau kata sandi salah.';
 };
 $('signup').onclick = async () => {
-  $('authMsg').textContent = '';
+  $('authMsg').textContent = ''; $('authMsg').style.color = '';
+  if (!$('em').value || $('pw').value.length < 6) { $('authMsg').textContent = 'Isi email dan kata sandi (min. 6 karakter) dulu.'; return; }
   const { data, error } = await sb.auth.signUp({ email: $('em').value, password: $('pw').value });
   if (error) $('authMsg').textContent = 'Gagal daftar: ' + error.message;
   else if (!data.session) $('authMsg').textContent = 'Cek email Anda untuk konfirmasi, lalu masuk.';
+};
+$('forgot').onclick = async () => {
+  $('authMsg').style.color = '';
+  if (!$('em').value) { $('authMsg').textContent = 'Isi email Anda dulu, lalu tekan Lupa kata sandi.'; return; }
+  const { error } = await sb.auth.resetPasswordForEmail($('em').value, { redirectTo: location.origin });
+  if (error) { $('authMsg').textContent = 'Gagal mengirim: ' + error.message; return; }
+  $('authMsg').style.color = 'var(--acc)';
+  $('authMsg').textContent = 'Tautan reset sudah dikirim. Cek email Anda, termasuk folder spam.';
+};
+$('resetForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const { error } = await sb.auth.updateUser({ password: $('np').value });
+  if (error) { $('resetMsg').textContent = 'Gagal: ' + error.message; return; }
+  recovering = false; history.replaceState(null, '', location.pathname); show(true);
 };
 $('out').onclick = () => sb.auth.signOut();
 
@@ -138,8 +169,12 @@ function render() {
   const q = $('q').value.toLowerCase();
   const rows = links.filter((l) => (!activeLabel || l.label === activeLabel) &&
     [l.title, l.description, l.note, l.label, l.url].join(' ').toLowerCase().includes(q));
-  $('list').innerHTML = rows.length ? rows.map(card).join('') :
-    `<div class="empty" style="grid-column:1/-1">${links.length ? 'Tidak ada link yang cocok.' : 'Belum ada link. Tempel link pertama Anda di atas.'}</div>`;
+  const groups = {};
+  rows.forEach((l) => { const n = platform(l.url)[0]; (groups[n] = groups[n] || []).push(l); });
+  const names = Object.keys(groups).sort((x, y) => groups[y].length - groups[x].length);
+  $('list').innerHTML = names.length
+    ? names.map((n) => `<details class="grp" open><summary>${esc(n)} <span>${groups[n].length}</span></summary><div class="grid">${groups[n].map(card).join('')}</div></details>`).join('')
+    : `<div class="empty">${links.length ? 'Tidak ada link yang cocok.' : 'Belum ada link. Tempel link pertama Anda di atas.'}</div>`;
   $('list').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => del(b.dataset.del));
   $('list').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => edit(b.dataset.edit));
 }
