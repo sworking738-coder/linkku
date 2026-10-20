@@ -1,0 +1,2 @@
+const SB_URL = 'https://nvdycbtviwnozmpppxuv.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52ZHljYnR2aXdub3ptcHBweHV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1MDI3NjgsImV4cCI6MjEwODA3ODc2OH0.juoO6mA6377aXMupqtacjl66y4g73S7FF0BtrovXIpU';
