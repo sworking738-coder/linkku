@@ -89,6 +89,13 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 #reset:not([hidden]){position:fixed;inset:0;z-index:5;background:var(--bg);display:grid;align-content:center;justify-items:center;gap:6px;padding:20px}
 #reset .box{width:min(380px,100%)}
 @media(max-width:760px){#auth:not([hidden]){grid-template-columns:1fr;grid-template-rows:auto 1fr}.art{padding:22px 20px;place-items:start}.art h1{font-size:2.2rem}.art p{margin:4px 0 0}.stack{display:none}}
+.ck{position:absolute;left:8px;top:8px;width:28px;height:28px;border-radius:8px;border:2px solid #fff;background:rgba(0,0,0,.35);color:transparent;display:grid;place-items:center;font-weight:800}.ck.on{background:var(--acc);color:var(--acc-ink)}
+.card.sel{outline:3px solid var(--acc);outline-offset:-3px}
+#selBar{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:15;width:min(960px,96vw);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+#selBar input{width:150px;flex:1;min-width:120px}
+#toast{bottom:96px}.ib{font-size:.82rem;line-height:1.2;padding:6px 10px}
+.shr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line)}
+main{padding-bottom:140px}
 </style>
 </head>
 <body>
@@ -124,7 +131,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 
 <section id="app" hidden>
   <div class="top"><h1>Linkku</h1>
-    <div><button class="p" id="add">+ Tambah link</button><button id="csv">Unduh CSV</button><button id="out">Keluar</button></div></div>
+    <div><button class="p" id="add">+ Tambah link</button><button id="selBtn">Pilih</button><button id="shBtn">Bagikan koleksi</button><button id="csv">Unduh CSV</button><button id="out">Keluar</button></div></div>
   <div class="stats" id="stats"></div>
   <div class="tools">
     <input id="q" type="search" placeholder="Cari judul, catatan, atau label">
@@ -133,12 +140,23 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
     <select id="view" aria-label="Tampilan"><option value="card">Kartu</option><option value="list">Daftar</option><option value="compact">Ringkas</option></select>
   </div>
   <div class="bar" id="chips"></div>
-  <div class="bar" id="shareBar"></div>
   <div id="list"></div>
 </section>
 </main>
 
+<div id="selBar" hidden>
+  <b id="cnt">0 dipilih</b>
+  <button data-b="all">Pilih semua</button><button data-b="none">Kosongkan</button>
+  <input id="bl" list="labels" placeholder="Label tujuan"><button data-b="move">Pindah</button>
+  <button data-b="fav">★ Favorit</button><button data-b="share">Bagikan</button><button data-b="del">Hapus</button>
+</div>
 <div id="toast" hidden></div>
+<dialog id="shDlg"><form method="dialog">
+  <h2>Bagikan koleksi</h2>
+  <p class="pf" style="margin:0">Penerima link hanya bisa melihat isi label, tidak bisa mengubah apa pun.</p>
+  <div id="shList"></div>
+  <button>Tutup</button>
+</form></dialog>
 <dialog id="dlg">
   <form id="addForm">
     <h2 id="dT">Tambah link</h2>
@@ -169,7 +187,7 @@ const badge = (n) => `<div class="bd" style="background:${col(n)}">${esc(n[0])}<
 const hue = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 
 let links = [], flt = '', editId = null, newImg = null, pending = null, recovering = location.hash.includes('type=recovery');
-let shares = [], openF = null; const busy = new Set();
+let shares = [], openF = null, selMode = false, visRows = []; const busy = new Set(), sel = new Set();
 
 // Link yang dibagikan dari HP (Bagikan > Linkku)
 (() => {
@@ -275,13 +293,44 @@ function toast(msg, undo) {
   if (undo) $('tu').onclick = async () => { await undo(); t.hidden = true; load(); };
   clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 7000);
 }
-$('shareBar').onclick = async (e) => {
+async function shr(o) {
+  try { if (navigator.share) await navigator.share(o); else { await navigator.clipboard.writeText(o.url || o.text); toast('Link disalin'); } } catch (_) {}
+}
+function renderSh() {
+  const labels = [...new Set(links.map((l) => l.label).filter(Boolean))].sort();
+  $('shList').innerHTML = labels.length ? labels.map((n) => {
+    const on = shares.some((x) => x.label === n), c = links.filter((l) => l.label === n).length;
+    return `<div class="shr"><span class="lb" style="--h:${hue(n)}">${esc(n)}</span><span class="pf" style="flex:1">${c} link${on ? ' · sedang dibagikan' : ''}</span>
+      <button type="button" class="p" data-sh="${esc(n)}">Bagikan</button>${on ? `<button type="button" data-un="${esc(n)}">Hentikan</button>` : ''}</div>`;
+  }).join('') : '<p class="pf">Belum ada label. Beri label pada link Anda dulu.</p>';
+}
+$('shBtn').onclick = () => { renderSh(); $('shDlg').showModal(); };
+$('shList').onclick = async (e) => {
   const b = e.target.closest('button'); if (!b) return;
-  let s = shares.find((x) => x.label === flt);
-  if (b.dataset.un) { if (s) { await sb.from('shares').delete().eq('token', s.token); await load(); toast('Berbagi dihentikan'); } return; }
-  if (!s) { const r = await sb.from('shares').insert({ label: flt }).select().single(); if (r.error) { alert('Gagal: ' + r.error.message); return; } s = r.data; await load(); }
-  const u = location.origin + '/share.html?t=' + s.token;
-  try { if (navigator.share) await navigator.share({ title: 'Linkku: ' + flt, url: u }); else { await navigator.clipboard.writeText(u); toast('Link disalin'); } } catch (_) { prompt('Salin link ini:', u); }
+  const n = b.dataset.sh || b.dataset.un; let s = shares.find((x) => x.label === n);
+  if (b.dataset.un) { if (s) { await sb.from('shares').delete().eq('token', s.token); await load(); renderSh(); toast('Berbagi dihentikan'); } return; }
+  if (!s) { const r = await sb.from('shares').insert({ label: n }).select().single(); if (r.error) { alert('Gagal: ' + r.error.message); return; } s = r.data; await load(); renderSh(); }
+  shr({ title: 'Linkku: ' + n, url: location.origin + '/share.html?t=' + s.token });
+};
+$('selBtn').onclick = () => { selMode = !selMode; sel.clear(); $('selBtn').textContent = selMode ? 'Selesai' : 'Pilih'; render(); };
+$('selBar').onclick = async (e) => {
+  const k = e.target.closest('[data-b]'); if (!k) return;
+  const b = k.dataset.b, ids = [...sel];
+  if (b === 'all') { visRows.forEach((l) => sel.add(l.id)); render(); return; }
+  if (b === 'none') { sel.clear(); render(); return; }
+  if (!ids.length) { toast('Pilih link dulu'); return; }
+  const set = links.filter((l) => sel.has(l.id));
+  if (b === 'move') {
+    const v = $('bl').value.trim(); if (!v) { toast('Isi label tujuan dulu'); return; }
+    await sb.from('links').update({ label: v }).in('id', ids); $('bl').value = ''; toast('Dipindah ke “' + v + '”');
+  } else if (b === 'fav') await sb.from('links').update({ favorite: true }).in('id', ids);
+  else if (b === 'share') { shr({ title: 'Link dari Linkku', text: set.map((l) => l.url).join('\n') }); return; }
+  else if (b === 'del') {
+    if (!confirm('Hapus ' + ids.length + ' link?')) return;
+    const cps = set.map(({ user_id, ...c }) => c);
+    await sb.from('links').delete().in('id', ids); toast(ids.length + ' link dihapus', () => sb.from('links').insert(cps));
+  }
+  sel.clear(); load();
 };
 
 // Tampilan
@@ -319,10 +368,12 @@ function render() {
   const ft = (n) => n === '★ Favorit' ? (l) => l.favorite : (l) => platform(l.url)[0] === n;
   if (openF && !links.some(ft(openF))) openF = null;
   $('list').className = 'v-' + $('view').value;
-  $('shareBar').innerHTML = flt && flt[0] !== '*' ? `<button class="p" data-sh="1">Bagikan label “${esc(flt)}”</button>${shares.some((x) => x.label === flt) ? '<button data-un="1">Hentikan berbagi</button>' : ''}` : '';
+  [...sel].forEach((id) => { if (!links.some((l) => l.id === id)) sel.delete(id); });
+  $('selBar').hidden = !selMode; $('cnt').textContent = sel.size + ' dipilih';
+  visRows = rows;
   let html = '';
   if (active) html = rows.length ? `<div class="grid">${rows.map(card).join('')}</div>` : '';
-  else if (openF) { const arr = rows.filter(ft(openF)); html = `<button class="link" data-back="1">← Semua folder</button><h2 class="ft">${esc(openF)} <span>${arr.length}</span></h2><div class="grid">${arr.map(card).join('')}</div>`; }
+  else if (openF) { const arr = rows.filter(ft(openF)); visRows = arr; html = `<button class="link" data-back="1">← Semua folder</button><h2 class="ft">${esc(openF)} <span>${arr.length}</span></h2><div class="grid">${arr.map(card).join('')}</div>`; }
   else {
     const groups = {}; rows.forEach((l) => { const n = platform(l.url)[0]; (groups[n] = groups[n] || []).push(l); });
     const names = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
@@ -337,11 +388,11 @@ function card(l) {
   const ph = `<div class="ph" style="background:linear-gradient(135deg,${c},${c}bb)">${esc(n[0])}</div>`;
   const img = l.image ? `<img src="${esc(l.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=ph style=background:${c}>${esc(n[0])}</div>'">` : ph;
   const b = (a, t, tt, cls) => `<button data-a="${a}" data-id="${l.id}" class="ib ${cls || ''}" title="${tt}" aria-label="${tt}">${t}</button>`;
-  return `<article class="card" draggable="true" data-id="${l.id}"><div class="im">${img}
-    <button class="star ${l.favorite ? 'on' : ''}" data-a="fav" data-id="${l.id}" title="Favorit" aria-label="Favorit">${l.favorite ? '★' : '☆'}</button>${l.seen ? '' : '<i class="nw">Baru</i>'}</div>
+  return `<article class="card ${sel.has(l.id) ? 'sel' : ''}" draggable="true" data-id="${l.id}"><div class="im">${img}
+    <button class="star ${l.favorite ? 'on' : ''}" data-a="fav" data-id="${l.id}" title="Favorit" aria-label="Favorit">${l.favorite ? '★' : '☆'}</button>${selMode ? `<span class="ck ${sel.has(l.id) ? 'on' : ''}">✓</span>` : (l.seen ? '' : '<i class="nw">Baru</i>')}</div>
   <div class="body"><div class="pf">${esc(n)}</div>${l.label ? `<span class="lb" style="--h:${hue(l.label)}">${esc(l.label)}</span>` : ''}
     <h3>${esc(l.title || l.url)}</h3>${busy.has(l.id) ? '<p>Memuat preview…</p>' : ''}${l.description ? `<p>${esc(l.description)}</p>` : ''}${l.note ? `<p style="color:var(--ink)">Catatan: ${esc(l.note)}</p>` : ''}</div>
-  <div class="act">${b('seen', l.seen ? '○' : '✓', l.seen ? 'Tandai belum dilihat' : 'Tandai dilihat', 'x')}${b('edit', '✎', 'Ubah')}${b('del', '🗑', 'Hapus')}</div></article>`;
+  <div class="act">${b('share', '⤴ Bagikan', 'Bagikan link')}${b('edit', '✎ Ubah', 'Ubah')}${b('del', '🗑 Hapus', 'Hapus')}${b('seen', l.seen ? '○ Belum' : '✓ Dilihat', l.seen ? 'Tandai belum dilihat' : 'Tandai dilihat', 'x')}</div></article>`;
 }
 $('list').onclick = async (e) => {
   const fo = e.target.closest('[data-fold]'); if (fo) { openF = fo.dataset.fold; render(); return; }
@@ -349,11 +400,13 @@ $('list').onclick = async (e) => {
   const t = e.target.closest('[data-a]');
   if (!t) {
     const cd = e.target.closest('.card'); const l = cd && links.find((x) => x.id === cd.dataset.id); if (!l) return;
+    if (selMode) { sel.has(l.id) ? sel.delete(l.id) : sel.add(l.id); render(); return; }
     window.open(l.url, '_blank', 'noopener'); if (!l.seen) upd(l.id, { seen: true }); return;
   }
   const id = t.dataset.id, l = links.find((x) => x.id === id), a = t.dataset.a;
   if (a === 'fav') upd(id, { favorite: !l.favorite });
   else if (a === 'seen') upd(id, { seen: !l.seen });
+  else if (a === 'share') shr({ title: l.title || 'Link dari Linkku', url: l.url });
   else if (a === 'edit') openDlg(l);
   else if (a === 'del') { await sb.from('links').delete().eq('id', id); const { user_id, ...copy } = l; toast('Link dihapus', () => sb.from('links').insert(copy)); load(); }
 };
