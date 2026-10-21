@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Linkku</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14212b;--mute:#5d6b77;--line:#d5dce2}
+@media (prefers-color-scheme:dark){:root{--bg:#10171d;--card:#1a242d;--ink:#e8eef2;--mute:#93a3af;--line:#2b3946}}
+body{margin:0;background:radial-gradient(circle at 12% -5%,rgba(14,124,134,.18),transparent 42%),var(--bg);color:var(--ink);font:400 16px/1.5 Figtree,system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 60px}h1{font-weight:800;margin:8px 0 2px}.sub{color:var(--mute);margin:0 0 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;color:inherit;text-decoration:none;display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s}
+.card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.14)}
+.card img,.ph{width:100%;height:150px;object-fit:cover;display:grid;place-items:center;font:800 2.4rem Figtree;color:#fff}
+.b{padding:12px 14px;display:grid;gap:4px}.pf{font-size:.85rem;color:var(--mute)}h3{margin:0;font-size:1rem;overflow-wrap:anywhere}
+p{margin:0;font-size:.9rem;color:var(--mute);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.empty{color:var(--mute);padding:40px 0;text-align:center}
+</style></head><body><main><h1>Linkku</h1><p class="sub" id="sub">Memuat…</p><div class="grid" id="g"></div></main>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const COL = { Instagram: '#c13584', Facebook: '#1877f2', Threads: '#101010', X: '#14171a', TikTok: '#010101', YouTube: '#e62117', LinkedIn: '#0a66c2' };
+(async () => {
+  const sb = supabase.createClient(SB_URL, SB_KEY);
+  const t = new URLSearchParams(location.search).get('t');
+  const { data, error } = t ? await sb.rpc('shared_links', { tok: t }) : { data: [] };
+  if (error || !data || !data.length) { document.getElementById('sub').textContent = ''; document.getElementById('g').innerHTML = '<div class="empty" style="grid-column:1/-1">Koleksi ini tidak ditemukan atau sudah tidak dibagikan.</div>'; return; }
+  document.getElementById('sub').textContent = `Koleksi “${data[0].label}” · ${data.length} link`;
+  document.getElementById('g').innerHTML = data.map((l) => {
+    const n = l.platform || 'Link', c = COL[n] || '#5d6b77', ph = `<div class="ph" style="background:${c}">${esc(n[0])}</div>`;
+    const img = l.image ? `<img src="${esc(l.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=ph style=background:${c}>${esc(n[0])}</div>'">` : ph;
+    return `<a class="card" href="${esc(l.url)}" target="_blank" rel="noopener">${img}<div class="b"><div class="pf">${esc(n)}</div><h3>${esc(l.title || l.url)}</h3>${l.description ? `<p>${esc(l.description)}</p>` : ''}</div></a>`;
+  }).join('');
+})();
+</script></body></html>
